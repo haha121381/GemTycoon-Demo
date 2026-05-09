@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宝石大亨 - Gem Tycoon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+<script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react,react-dom"
+        }
+    }
+    </script>
+
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import { createRoot } from 'react-dom/client';
+        // 注意：这里导入图标的方式可能需要根据 CDN 的导出调整，但 esm.sh 通常支持具名导入
+        import { Gem, Diamond, Hexagon, Triangle, Circle, Coins, Zap, RotateCcw, Crown, Sparkles, X, Trophy, Store, ArrowRight, Hammer, Trash2, Copy, Eye, Wand2, Play, BarChart3, Repeat, ShieldCheck, AlertCircle, Hourglass, CheckCircle2, Bomb, Dices, PiggyBank, CreditCard, FlaskConical, Ticket, Layers, Star, Coins as CoinsIcon, Banknote, RefreshCw, ShoppingBag, Mountain, Octagon, Square, PackagePlus, ArrowLeftRight, TrendingUp, HandCoins, Eraser, Gift, Skull, Archive, HeartCrack, Shuffle, Stars, ThumbsDown, ThumbsUp, Calendar, Swords, Disc, Wind, ScanEye, Check, Brush, Glasses, ChevronLeft, ChevronRight, Pentagon, Heart } from 'lucide-react';
+
+        // ==========================================
+        //  请将你提供的完整代码粘贴在这里 (除了最后的 export default App)
+        // ==========================================
+        const Heptagon = ({ size = 24, ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <polygon points="12 2 19.8 6.5 21.3 15.3 16.2 21.5 7.8 21.5 2.7 15.3 4.2 6.5" />
+  </svg>
+);
+
+// --- 音效合成器 (Web Audio API) ---
+let audioCtx = null;
+
+const playSound = (type) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+    }
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(err => console.warn("Audio resume failed", err));
+    }
+
+    const ctx = audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    
+    if (type === 'spin') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } else if (type === 'tick') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(100, now + 0.03);
+      gain.gain.setValueAtTime(0.03, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      osc.start(now);
+      osc.stop(now + 0.03);
+    } else if (type === 'score_chip') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.05);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } else if (type === 'artifact_trigger') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(600, now + 0.15);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else if (type === 'synergy') {
+      const frequencies = [330, 440, 554, 659]; 
+      frequencies.forEach((f, i) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'triangle';
+          o.frequency.value = f;
+          o.connect(g);
+          g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.05, now + i * 0.05);
+          g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.4);
+          o.start(now + i * 0.05);
+          o.stop(now + i * 0.05 + 0.4);
+      });
+    } else if (type === 'multiplier') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.linearRampToValueAtTime(1200, now + 0.15);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else if (type === 'gold') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(2000, now + 0.1);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } else if (type === 'buy') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.setValueAtTime(800, now + 0.1);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {
+    console.error("Audio play failed", e);
+  }
+};
+
+// --- 游戏数据定义 ---
+
+const SYMBOL_TYPES = {
+  SAPPHIRE: { id: 'sapphire', name: '蓝宝石', subtype: 'gem', type: 'card', icon: <Hexagon size={32} />, color: 'text-blue-500', bg: 'bg-blue-900/40', border: 'border-blue-500/50', desc: '10 筹码', chips: 10, mult: 0, price: 11, rarity: 1 },
+  EMERALD:  { id: 'emerald', name: '祖母绿', subtype: 'gem', type: 'card', icon: <Triangle size={32} />, color: 'text-emerald-500', bg: 'bg-emerald-900/40', border: 'border-emerald-500/50', desc: '15 筹码', chips: 15, mult: 0, price: 13, rarity: 1 },
+  RUBY:     { id: 'ruby', name: '红宝石', subtype: 'gem', type: 'card', icon: <Octagon size={32} />, color: 'text-red-500', bg: 'bg-red-900/40', border: 'border-red-500/50', desc: '20 筹码', chips: 20, mult: 0, price: 16, rarity: 2 },
+  DIAMOND:  { id: 'diamond', name: '金刚石', subtype: 'gem', type: 'card', icon: <Diamond size={32} />, color: 'text-cyan-400', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', desc: '20 筹码, +2 倍率', chips: 20, mult: 2, price: 19, rarity: 3 },
+  RAINBOW:  { id: 'rainbow', name: '彩虹石', subtype: 'gem', type: 'card', icon: <Star size={32} />, color: 'text-white', bg: 'bg-gradient-to-br from-red-500 via-green-500 to-blue-500 opacity-80', border: 'border-white/50', desc: '万能宝石，可与任意宝石连携', chips: 0, mult: 0, isWildcard: true, price: 17, rarity: 3 },
+  PINK_DIAMOND: { id: 'pink_diamond', name: '塔菲石', subtype: 'gem', type: 'card', icon: <Heptagon size={32} />, color: 'text-pink-500', bg: 'bg-pink-900/40', border: 'border-pink-500/50', desc: '提供 +5 倍率', chips: 0, mult: 5, isMultMultiplier: false, price: 14, rarity: 3 },
+  AMETHYST: { id: 'amethyst', name: '紫水晶', subtype: 'gem', type: 'card', icon: <Circle size={32} />, color: 'text-purple-500', bg: 'bg-purple-900/40', border: 'border-purple-500/50', desc: '提供 x2 倍率', chips: 0, mult: 0, isMultMultiplier: true, multiplierVal: 2, price: 20, rarity: 2 },
+  TOPAZ:    { id: 'topaz', name: '托帕石', subtype: 'gem', type: 'card', icon: <Pentagon size={32} />, color: 'text-amber-500', bg: 'bg-amber-900/40', border: 'border-amber-500/50', desc: '10 筹码, +1 倍率, +1 金币', chips: 10, mult: 1, gold: 1, price: 18, rarity: 3 },
+  COIN:     { id: 'coin', name: '金币卡', type: 'card', icon: <Coins size={32} />, color: 'text-yellow-500', bg: 'bg-yellow-900/40', border: 'border-yellow-500/50', desc: '每回合产出 3 金币', chips: 0, mult: 0, gold: 3, price: 12, rarity: 1 },
+  ROCK:     { id: 'rock', name: '原石', type: 'card', icon: <Square size={32} />, color: 'text-slate-500', bg: 'bg-slate-800', border: 'border-slate-600', desc: '无效果', chips: 0, mult: 0, price: 1, rarity: 0 },
+};
+
+const ARTIFACTS = [
+  { id: 'dazzling', name: '眼花缭乱', type: 'artifact', icon: <Stars size={24} />, desc: '特殊排列计分时效果翻倍', price: 25 },
+  { id: 'magic_box', name: '魔力宝匣', type: 'artifact', icon: <Archive size={24} />, desc: '奖池每有1张牌，计分时+2倍率', price: 20, 
+    effect: (ctx, data, count, deckLength) => {
+      ctx.mult += deckLength * 2;
+      return `卡组共鸣 (+${deckLength * 2}x)`;
+    } 
+  },
+  { id: 'ore_specimen', name: '矿石标本', type: 'artifact', icon: <Mountain size={24} />, desc: '奖池每有1张原石，结算时+15筹码', price: 20,
+    effect: (ctx, data, count, deckLength, deck) => {
+      const rockCount = deck.filter(c => c === 'rock').length;
+      const bonus = rockCount * 15;
+      ctx.chips += bonus;
+      return `矿石共鸣 (+${bonus})`;
+    }
+  },
+  { id: 'angle_grinder', name: '角磨机', type: 'artifact', icon: <Disc size={24} />, desc: '所有宝石提供额外 +1 倍率', price: 15 },
+  { id: 'missing_heart', name: '缺心眼儿', type: 'artifact', icon: <HeartCrack size={24} />, desc: '缺心十字计分时 +55x 倍率', price: 20 },
+  { id: 'blue_green_blind', name: '蓝绿色盲', type: 'artifact', icon: <ScanEye size={24} />, desc: '蓝宝石和祖母绿可以互相连携', price: 20 },
+  { id: 'old_eyes', name: '老眼昏花', type: 'artifact', icon: <Glasses size={24} />, desc: '将原石和金币卡视为宝石', price: 30 },
+  { id: 'pink_promise', name: '粉红之约', type: 'artifact', icon: <Heart size={24} className="text-pink-400"/>, desc: '当老虎机中有塔菲石，结算时总分 x2', price: 30 },
+  { id: 'red_luck', name: '红运当头', type: 'artifact', icon: <Gem size={24} className="text-red-500"/>, desc: '每触发一次红宝石，该神器成长1，结算时增加筹码和倍率', price: 25, isGrowth: true,
+    effect: (ctx, data) => {
+        const growth = data?.growth || 0;
+        const bonus = growth; 
+        ctx.chips += bonus;
+        ctx.mult += bonus;
+        return `红运 (+${bonus})`;
+    }
+  },
+  { id: 'perfectionist', name: '完美主义', type: 'artifact', icon: <Check size={24} />, desc: '若奖池中无原石，结算时总分 x1.5', price: 25 },
+  { id: 'purple_air', name: '紫气东来', type: 'artifact', icon: <Wind size={24} className="text-purple-400"/>, desc: '紫水晶额外提供 x1 倍率 (x2 → x3)', price: 45 },
+  { id: 'shopaholic', name: '货比三家', type: 'artifact', icon: <ShoppingBag size={24} />, desc: '商店刷新次数增加至 3 次', price: 15 },
+  { id: 'purple_gold_vip', name: '紫金VIP', type: 'artifact', icon: <CreditCard size={24} className="text-purple-400"/>, desc: '商店刷新费用减少 3G', price: 20 },
+  { id: 'piggy_bank', name: '猪猪存钱罐', type: 'artifact', icon: <PiggyBank size={24} />, desc: '退出商店时每有10金币获得1金币', price: 15 },
+  { id: 'platinum_vip', name: '白金VIP', type: 'artifact', icon: <CreditCard size={24} />, desc: '商店所有商品价格 -5G (最低1G)', price: 25 },
+  { id: 'black_gold_vip', name: '黑金VIP', type: 'artifact', icon: <Ticket size={24} />, desc: '商店额外增加 1 个商品位', price: 30 },
+  { id: 'colorful_vip', name: '炫彩VIP', type: 'artifact', icon: <Crown size={24} />, desc: '商店随机一个商品免费', price: 35 },
+  { id: 'hourglass', name: '时光沙漏', type: 'artifact', icon: <Hourglass size={24} />, desc: '每回合 +1 次旋转机会', price: 35, addSpins: 1 },
+  { id: 'lens', name: '聚焦透镜', type: 'artifact', icon: <TrendingUp size={24} />, desc: '每次旋转成长 +2 倍率，结算时增加倍率', price: 25, isGrowth: true, 
+    effect: (ctx, data) => { 
+      const bonus = data?.growth || 0;
+      ctx.mult += bonus; 
+      return `聚焦 (+${bonus}x)`; 
+    } 
+  },
+  { id: 'polisher', name: '抛光布', type: 'artifact', icon: <Brush size={24} />, desc: '所有宝石 +10 筹码', price: 25, effect: (ctx) => { ctx.gemChipBonus += 10; return '抛光加成'; } },
+  { id: 'hammer', name: '地质锤', type: 'artifact', icon: <Hammer size={24} />, desc: '原石现在提供 10 筹码', price: 15 },
+  { id: 'greedy_hand', name: '贪婪之手', type: 'artifact', icon: <Coins size={24} />, desc: '金币卡额外提供 +10 筹码', price: 15, effect: (ctx) => { ctx.goldCardChipBonus += 10; return '贪婪加成'; } },
+  { id: 'philosophers_stone', name: '贤者之石', type: 'artifact', icon: <Gem size={24} className="text-red-400"/>, desc: '场上每个原石提供 +3x 倍率', price: 20 }, 
+  { id: 'shiny_gold', name: '金光闪闪', type: 'artifact', icon: <Sparkles size={24} className="text-yellow-300"/>, desc: '场上每个金币卡提供 +0.8x 倍率', price: 15 },
+  { id: 'more_is_better', name: '多多益善', type: 'artifact', icon: <HandCoins size={24} />, desc: '每有一个神器(含自身) +25 筹码', price: 30, 
+    effect: (ctx, data, count) => {
+      const bonus = count * 25;
+      ctx.chips += bonus;
+      return `神器共鸣 (+${bonus})`;
+    }
+  }
+];
+
+const MAGIC_ITEMS = [
+  { id: 'chaos_stew', name: '一锅乱炖', type: 'magic', action: 'randomize_all', icon: <Shuffle size={24} />, color: 'text-orange-300', desc: '将奖池内所有卡牌随机替换', price: 10 },
+  { id: 'rock_curse', name: '原石诅咒', type: 'magic', action: 'add_rocks', icon: <Skull size={24} />, color: 'text-gray-400', desc: '往卡组里添加 5 张原石 (慎用)', price: 15 },
+  { id: 'surprise_gift', name: '惊喜魔法', type: 'magic', action: 'random_reward', icon: <Gift size={24} />, color: 'text-pink-400', desc: '随机获得一张卡牌或一个神器', price: 20 },
+  { id: 'vanish', name: '烟消云散', type: 'magic', action: 'remove_all_of_card', icon: <Eraser size={24} />, color: 'text-slate-200', desc: '删除奖池中一种指定类型的所有卡牌', price: 25 },
+  { id: 'dimensional_pocket', name: '次元口袋', type: 'magic', action: 'add_slot', icon: <PackagePlus size={24} />, color: 'text-purple-300', desc: '增加 1 个神器槽位 (最多使用5次)', price: 30 },
+  { id: 'chaos', name: '？？？？', type: 'magic', action: 'chaos_spawn', icon: <Dices size={24} className="text-purple-500 animate-pulse"/>, color: 'text-purple-400', desc: '消耗1张彩虹石，生成除彩虹石外的所有卡牌各1张', price: 25 },
+  { id: 'windfall', name: '天降横财', type: 'magic', action: 'windfall_gold', icon: <Banknote size={24} />, color: 'text-green-300', desc: '获得当前金币数的等量金币(最多50G)', price: 8 },
+  { id: 'midas_touch', name: '点石成金', type: 'magic', action: 'transmute_rock', icon: <Wand2 size={24} />, color: 'text-purple-300', desc: '将一张原石随机变为宝石', price: 20 },
+  { id: 'alchemy_pot', name: '炼金锅', type: 'magic', action: 'alchemy_coin_count', icon: <FlaskConical size={24} />, color: 'text-yellow-400', desc: '奖池里每有 1 张金币卡，获得 3G', price: 10 },
+  { id: 'gambling_stone', name: '疯狂赌石', type: 'magic', action: 'gamble_coins', icon: <Dices size={24} />, color: 'text-green-400', desc: '将所有金币卡随机替换为宝石/原石', price: 10 },
+  { id: 'tnt', name: '采矿炸药', type: 'magic', action: 'remove_all_rocks', icon: <Bomb size={24} />, color: 'text-red-500', desc: '销毁卡组中所有原石，每张 +5G', price: 20 },
+  { id: 'purify', name: '净化之光', type: 'magic', action: 'remove_card', icon: <Trash2 size={24} />, color: 'text-slate-400', desc: '删除一张指定的卡牌', price: 15 },
+  { id: 'clone', name: '克隆卷轴', type: 'magic', action: 'duplicate_card', icon: <Copy size={24} />, color: 'text-blue-400', desc: '复制一张指定的卡牌', price: 15 },
+  { id: 'salvage', name: '高价回收', type: 'magic', action: 'remove_artifact', icon: <Hammer size={24} />, color: 'text-orange-400', desc: '摧毁一个道具并获得 15G', price: 10 },
+  { id: 'turn_tables', name: '扭转乾坤', type: 'magic', action: 'swap_artifacts', icon: <ArrowLeftRight size={24} />, color: 'text-cyan-300', desc: '交换两个神器的位置', price: 15 },
+  { id: 'reforge_anvil', name: '重铸铁砧', type: 'magic', action: 'reforge_artifact', icon: <Hammer size={24} className="text-red-400" />, color: 'text-red-300', desc: '将一个神器随机变为另一个', price: 12 },
+];
+
+const INITIAL_DECK = [
+  'sapphire', 'sapphire',
+  'emerald', 'emerald',
+  'coin', 'coin',
+  'rock', 'rock', 'rock', 'rock'
+];
+
+function App() {
+  const [deck, setDeck] = useState(INITIAL_DECK);
+  const [artifacts, setArtifacts] = useState([]); 
+  const [grid, setGrid] = useState(Array(9).fill(null));
+  
+  const artifactsRef = useRef(artifacts);
+  useEffect(() => {
+    artifactsRef.current = artifacts;
+  }, [artifacts]);
+
+  const [gameState, setGameState] = useState('START'); 
+  const [level, setLevel] = useState(1);
+  const [round, setRound] = useState(1);
+  const [score, setScore] = useState(0); 
+  const [targetScore, setTargetScore] = useState(200); 
+  const [spinsLeft, setSpinsLeft] = useState(4); 
+  const [maxSpins, setMaxSpins] = useState(4);
+  const [money, setMoney] = useState(10); 
+  
+  const [shopRerolls, setShopRerolls] = useState(1);
+  const [maxArtifacts, setMaxArtifacts] = useState(5); 
+  
+  const [gameStats, setGameStats] = useState({ 
+    totalHands: 0, 
+    bestHand: 0, 
+    worstHand: -1, 
+    totalGoldEarned: 0,
+    globalTotalScore: 0,
+    maxLevel: 1,
+    totalRounds: 0,
+    synergyCounts: {},
+    dimPocketCount: 0
+  });
+
+  const [magicMode, setMagicMode] = useState(null); 
+  const [isDeckVisible, setIsDeckVisible] = useState(false); 
+  const [notification, setNotification] = useState(null);
+  const [summaryPage, setSummaryPage] = useState(0); 
+  
+  const [handResult, setHandResult] = useState({ chips: 0, mult: 0, total: 0, gold: 0 });
+  const [scoringQueue, setScoringQueue] = useState([]); 
+  const [currentAnimEvent, setCurrentAnimEvent] = useState(null); 
+  const [shopItems, setShopItems] = useState([]);
+  const [goldPop, setGoldPop] = useState(false);
+
+  const [swapSourceIndex, setSwapSourceIndex] = useState(null);
+
+  const showToast = (msg, type = 'info') => {
+    setNotification({ msg, type, id: Date.now() });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  useEffect(() => {
+    if (gameState === 'SCORING' && scoringQueue.length > 0 && !currentAnimEvent) {
+      const nextEvent = scoringQueue[0];
+      setCurrentAnimEvent(nextEvent);
+      setScoringQueue(prev => prev.slice(1));
+
+      if (nextEvent.type === 'synergy') {
+        playSound('synergy');
+        setGameStats(prev => ({
+          ...prev,
+          synergyCounts: {
+            ...prev.synergyCounts,
+            [nextEvent.name]: (prev.synergyCounts[nextEvent.name] || 0) + 1
+          }
+        }));
+      } else if (nextEvent.type === 'card') {
+         if (nextEvent.addGold > 0) playSound('gold');
+         else playSound('score_chip');
+      } else if (nextEvent.type === 'artifact') {
+         playSound('artifact_trigger');
+      } else if (nextEvent.type === 'multiplier') {
+         playSound('multiplier'); 
+      }
+
+      if (nextEvent.type === 'card' || nextEvent.type === 'artifact') {
+        const addedGold = nextEvent.addGold || 0;
+        if (addedGold > 0) {
+           setGoldPop(true);
+           setTimeout(() => setGoldPop(false), 200);
+        }
+
+        setHandResult(prev => ({
+          ...prev,
+          chips: prev.chips + (nextEvent.addChips || 0),
+          mult: prev.mult + (nextEvent.addMult || 0),
+          gold: prev.gold + addedGold,
+          total: Math.floor((prev.chips + (nextEvent.addChips || 0)) * Math.max(1, prev.mult + (nextEvent.addMult || 0)))
+        }));
+      } else if (nextEvent.type === 'multiplier') {
+         setHandResult(prev => {
+             const newMult = Math.floor(prev.mult * nextEvent.factor);
+             return { ...prev, mult: newMult, total: Math.floor(prev.chips * newMult) };
+         });
+      } else if (nextEvent.type === 'synergy') {
+         setHandResult(prev => {
+             const newMult = prev.mult + nextEvent.addMult;
+             return { ...prev, mult: newMult, total: Math.floor(prev.chips * newMult) };
+         });
+      }
+
+      const delay = nextEvent.type === 'synergy' ? 1200 : 300; 
+      setTimeout(() => {
+        setCurrentAnimEvent(null);
+      }, delay);
+    } 
+    else if (gameState === 'SCORING' && scoringQueue.length === 0 && !currentAnimEvent) {
+      setTimeout(() => {
+          resolveRound();
+      }, 800);
+    }
+  }, [scoringQueue, currentAnimEvent, gameState]);
+
+  // --- 核心逻辑 ---
+
+  const spin = () => {
+    if (gameState !== 'IDLE' || magicMode) return;
+    if (spinsLeft <= 0) return;
+
+    playSound('spin'); 
+    setSpinsLeft(prev => prev - 1);
+    setGameStats(prev => ({ ...prev, totalHands: prev.totalHands + 1 }));
+    setGameState('SPINNING');
+    setHandResult({ chips: 0, mult: 0, total: 0, gold: 0 });
+    
+    setArtifacts(prev => prev.map(a => {
+      if (a.id === 'lens') {
+        return { ...a, data: { ...a.data, growth: (a.data?.growth || 0) + 2.0 } };
+      }
+      return a;
+    }));
+
+    const finalGrid = Array(9).fill(null).map(() => {
+      const randomKey = deck[Math.floor(Math.random() * deck.length)];
+      return { ...SYMBOL_TYPES[randomKey.toUpperCase()], uid: Math.random() };
+    });
+
+    let ticks = 0;
+    const stopTicks = [6, 12, 18]; 
+    const interval = setInterval(() => {
+      ticks++;
+      playSound('tick'); 
+      setGrid(prevGrid => {
+        const current = prevGrid[0] ? [...prevGrid] : Array(9).fill(null);
+        return current.map((cell, i) => {
+          const col = i % 3; 
+          if (ticks < stopTicks[col]) {
+             const randomKey = deck[Math.floor(Math.random() * deck.length)];
+             return { ...SYMBOL_TYPES[randomKey.toUpperCase()], uid: Math.random(), isBlur: true };
+          } else if (ticks === stopTicks[col]) {
+             return { ...finalGrid[i], isBlur: false, isLanding: true };
+          } else {
+             return { ...finalGrid[i], isBlur: false, isLanding: false }; 
+          }
+        });
+      });
+
+      if (ticks > stopTicks[2] + 4) { 
+        clearInterval(interval);
+        setTimeout(() => prepareScoreQueue(finalGrid), 200);
+      }
+    }, 60);
+  };
+
+  const prepareScoreQueue = (finalGrid) => {
+    setGameState('SCORING');
+    const queue = [];
+    
+    const currentArtifacts = artifactsRef.current;
+
+    const context = { grid: finalGrid, chips: 0, mult: 0, gemChipBonus: 0, goldCardChipBonus: 0 };
+    
+    const hasHammer = currentArtifacts.some(a => a.id === 'hammer'); 
+    const hasShinyGold = currentArtifacts.some(a => a.id === 'shiny_gold');
+    const hasPhilosophersStone = currentArtifacts.some(a => a.id === 'philosophers_stone');
+    const hasAngleGrinder = currentArtifacts.some(a => a.id === 'angle_grinder');
+    const hasPurpleAir = currentArtifacts.some(a => a.id === 'purple_air');
+    const hasBlueGreenBlind = currentArtifacts.some(a => a.id === 'blue_green_blind');
+    const hasPerfectionist = currentArtifacts.some(a => a.id === 'perfectionist');
+    const hasOldEyes = currentArtifacts.some(a => a.id === 'old_eyes');
+    const hasRedLuck = currentArtifacts.some(a => a.id === 'red_luck');
+    const hasPinkPromise = currentArtifacts.some(a => a.id === 'pink_promise');
+
+    const isGem = (s) => s.subtype === 'gem' || (hasOldEyes && (s.id === 'rock' || s.id === 'coin'));
+
+    // PASS 1: Passive buffs
+    currentArtifacts.forEach(art => {
+      if (art.effect && !['lens', 'more_is_better', 'red_luck'].includes(art.id)) {
+         art.effect(context, art.data, currentArtifacts.length, deck.length, deck);
+      }
+    });
+
+    finalGrid.forEach((symbol, idx) => {
+      let chipVal = symbol.chips;
+      let multVal = symbol.mult; 
+      
+      if (isGem(symbol)) chipVal += context.gemChipBonus;
+      if (isGem(symbol) && hasAngleGrinder) multVal += 1; 
+
+      if (symbol.id === 'coin') chipVal += context.goldCardChipBonus;
+      if (symbol.id === 'rock' && hasHammer) chipVal = 10; 
+
+      if (symbol.id === 'coin' && hasShinyGold) multVal += 0.8; // Buffed to 0.8
+      if (symbol.id === 'rock' && hasPhilosophersStone) multVal += 3.0; // Buffed to 3.0
+
+      if (chipVal > 0 || multVal > 0 || symbol.gold > 0) {
+        queue.push({
+          type: 'card',
+          index: idx,
+          addChips: chipVal,
+          addMult: multVal,
+          addGold: symbol.gold,
+          name: symbol.name
+        });
+      }
+      
+      if (symbol.isMultMultiplier) {
+         let factor = symbol.multiplierVal || 1.5;
+         if (symbol.id === 'amethyst' && hasPurpleAir) {
+            factor += 1; 
+         }
+         queue.push({ type: 'multiplier', index: idx, factor: factor, name: symbol.name + (hasPurpleAir && symbol.id === 'amethyst' ? ' (紫气)' : '') });
+      }
+    });
+
+    const isValid = (s) => {
+      if (s.id === 'rock' && !hasOldEyes) return false; 
+      return true;
+    };
+
+    const getSynergyType = (symbols) => {
+       if (!symbols.every(s => isValid(s))) return null;
+       
+       const isAllGem = symbols.every(s => isGem(s)); 
+       if (!isAllGem) {
+          const firstId = symbols[0].id;
+          if (symbols.every(s => s.id === firstId)) return "MATCH";
+          return null;
+       }
+
+       const nonRainbows = symbols.filter(s => s.id !== 'rainbow');
+       if (nonRainbows.length === 0) return "MATCH"; 
+       
+       let targetId = nonRainbows[0].id;
+       if (hasBlueGreenBlind && (targetId === 'emerald' || targetId === 'sapphire')) {
+           const isAllBlueGreen = nonRainbows.every(s => s.id === 'emerald' || s.id === 'sapphire');
+           if (isAllBlueGreen) return "MATCH";
+       }
+       
+       if (nonRainbows.every(s => s.id === targetId)) return "MATCH";
+       return null;
+    };
+
+    const patterns = [
+      { indices: [0,1,2], mult: 7, name: '横向三连' },
+      { indices: [3,4,5], mult: 7, name: '横向三连' },
+      { indices: [6,7,8], mult: 7, name: '横向三连' },
+      { indices: [0,3,6], mult: 7, name: '纵向同花' },
+      { indices: [1,4,7], mult: 7, name: '纵向同花' },
+      { indices: [2,5,8], mult: 7, name: '纵向同花' },
+      { indices: [0,4,8], mult: 8, name: '对角连击' },
+      { indices: [2,4,6], mult: 8, name: '对角连击' },
+      { indices: [0,1,3,4], mult: 10, name: '四方连结' },
+      { indices: [1,2,4,5], mult: 10, name: '四方连结' },
+      { indices: [3,4,6,7], mult: 10, name: '四方连结' },
+      { indices: [4,5,7,8], mult: 10, name: '四方连结' },
+      { indices: [0,2,6,8], mult: 15, name: '四角同辉' },
+      { indices: [1,3,5,7], mult: 15, name: '缺心十字' }
+    ];
+
+    patterns.forEach(p => {
+       const symbols = p.indices.map(i => finalGrid[i]);
+       if (getSynergyType(symbols)) {
+          queue.push({ type: 'synergy', indices: p.indices, addMult: p.mult, name: p.name });
+          
+          currentArtifacts.forEach(art => {
+             if (art.id === 'dazzling') {
+                queue.push({ 
+                   type: 'artifact', 
+                   id: art.id, 
+                   addMult: p.mult, 
+                   name: '眼花缭乱' 
+                });
+             }
+             if (art.id === 'missing_heart' && p.name === '缺心十字') {
+                queue.push({ 
+                   type: 'artifact', 
+                   id: art.id, 
+                   addMult: 55, 
+                   name: '缺心眼儿' 
+                });
+             }
+          });
+       }
+    });
+
+    if (context.grid.some(s => s.id === 'ruby') && currentArtifacts.some(a=>a.id==='crown')) {
+       queue.push({ type: 'multiplier', indices: [0,1,2,3,4,5,6,7,8], factor: 2, name: '宝石皇冠' });
+    }
+
+    // Pink Promise
+    if (hasPinkPromise && finalGrid.some(s => s.id === 'pink_diamond')) {
+        queue.push({ type: 'artifact', id: 'pink_promise', name: '粉红之约' });
+        queue.push({ type: 'multiplier', indices: [0,1,2,3,4,5,6,7,8], factor: 2, name: '粉红之约' });
+    }
+
+    // PASS 2: Active triggers
+    currentArtifacts.forEach(art => {
+      if (art.effect) {
+         const tempCtx = { chips: 0, mult: 0 }; 
+         const msg = art.effect(tempCtx, art.data, currentArtifacts.length, deck.length, deck);
+         
+         if (tempCtx.chips > 0 || tempCtx.mult > 0) {
+            queue.push({
+               type: 'artifact',
+               id: art.id, 
+               addChips: tempCtx.chips,
+               addMult: tempCtx.mult,
+               name: art.name
+            });
+         }
+      }
+    });
+
+    if (hasPerfectionist && !deck.includes('rock')) {
+       queue.push({ type: 'artifact', id: 'perfectionist', name: '完美主义' });
+       queue.push({ type: 'multiplier', indices: [0,1,2,3,4,5,6,7,8], factor: 1.5, name: '完美主义' });
+    }
+
+    setScoringQueue(queue);
+    setHandResult({ chips: 0, mult: 1, total: 0, gold: 0 });
+  };
+
+  const resolveRound = () => {
+    const hasRedLuck = artifacts.some(a => a.id === 'red_luck');
+    if (hasRedLuck) {
+        const rubyCount = grid.filter(s => s.id === 'ruby').length;
+        if (rubyCount > 0) {
+             setArtifacts(prev => prev.map(a => {
+                if (a.id === 'red_luck') {
+                    return { ...a, data: { ...a.data, growth: (a.data?.growth || 0) + rubyCount } };
+                }
+                return a;
+             }));
+             showToast(`红运当头成长 +${rubyCount}`, "success");
+        }
+    }
+
+    const handTotal = handResult.total;
+    const handGold = handResult.gold;
+    const newTotalScore = score + handTotal;
+    const newMoney = money + handGold;
+
+    setScore(newTotalScore);
+    setMoney(newMoney);
+    setGameStats(prev => ({ 
+      ...prev, 
+      bestHand: Math.max(prev.bestHand, handTotal),
+      worstHand: prev.worstHand === -1 ? handTotal : Math.min(prev.worstHand, handTotal), 
+      totalGoldEarned: prev.totalGoldEarned + handGold,
+      globalTotalScore: prev.globalTotalScore + handTotal, 
+    }));
+    
+    setGameState('IDLE');
+
+    if (spinsLeft <= 0) {
+       if (newTotalScore >= targetScore) {
+           showToast("目标达成！进入商店", "success");
+           setTimeout(() => {
+               setGameState('SHOP');
+               generateShop(true); 
+           }, 1000);
+       } else {
+           setTimeout(() => setGameState('SUMMARY'), 500);
+       }
+    } else {
+       if (newTotalScore >= targetScore && score < targetScore) { 
+           showToast("分数达标！可继续赚分", "success");
+       }
+    }
+  };
+
+  // --- 商店逻辑 ---
+  const generateShop = (isFirstEntry = false) => {
+    if (isFirstEntry) {
+       const hasShopaholic = artifacts.some(a => a.id === 'shopaholic');
+       setShopRerolls(hasShopaholic ? 3 : 1);
+    }
+
+    const items = [];
+    const cardKeys = Object.keys(SYMBOL_TYPES);
+    
+    const availableArtifacts = ARTIFACTS.filter(a => !artifacts.some(owned => owned.id === a.id));
+    const validMagicItems = MAGIC_ITEMS.filter(m => m.id !== 'dimensional_pocket' || gameStats.dimPocketCount < 5);
+
+    const hasBlackGold = artifacts.some(a => a.id === 'black_gold_vip');
+    const totalSlots = hasBlackGold ? 4 : 3;
+
+    const hasPlatinum = artifacts.some(a => a.id === 'platinum_vip');
+    const hasColorful = artifacts.some(a => a.id === 'colorful_vip');
+    const freeIndex = hasColorful ? Math.floor(Math.random() * totalSlots) : -1;
+
+    for(let i=0; i<totalSlots; i++) {
+        let item = null;
+        let attempts = 0;
+        
+        while (!item && attempts < 10) {
+            attempts++;
+            const rand = Math.random();
+            let typeChoice = '';
+
+            if (i === 0 || rand < 0.4) typeChoice = 'card';
+            else if (rand < 0.7 && availableArtifacts.length > 0) typeChoice = 'artifact';
+            else typeChoice = 'magic';
+
+            if (typeChoice === 'card') {
+                const candidates = cardKeys.filter(k => !items.some(existing => existing.id === SYMBOL_TYPES[k].id));
+                if (candidates.length > 0) {
+                    const k = candidates[Math.floor(Math.random() * candidates.length)];
+                    item = { ...SYMBOL_TYPES[k] };
+                    if (k === 'ROCK') item.price = Math.floor(Math.random() * 20) + 1;
+                }
+            } else if (typeChoice === 'artifact') {
+                const candidates = availableArtifacts.filter(a => !items.some(existing => existing.id === a.id));
+                if (candidates.length > 0) {
+                    item = { ...candidates[Math.floor(Math.random() * candidates.length)] };
+                }
+            } else if (typeChoice === 'magic') {
+                const candidates = validMagicItems.filter(m => !items.some(existing => existing.id === m.id));
+                if (candidates.length > 0) {
+                    item = { ...candidates[Math.floor(Math.random() * candidates.length)] };
+                }
+            }
+        }
+
+        if (!item) {
+             const unusedCards = cardKeys.filter(k => !items.some(existing => existing.id === SYMBOL_TYPES[k].id));
+             const k = unusedCards.length > 0 
+                ? unusedCards[Math.floor(Math.random() * unusedCards.length)] 
+                : cardKeys[Math.floor(Math.random() * cardKeys.length)];
+             item = { ...SYMBOL_TYPES[k] };
+             if (k === 'ROCK') item.price = Math.floor(Math.random() * 20) + 1;
+        }
+
+        item.uid = Math.random();
+        if (hasPlatinum) {
+            item.price = Math.max(1, item.price - 5);
+        }
+        if (i === freeIndex) {
+            item.price = 0;
+            item.isFree = true; 
+        }
+
+        items.push(item);
+    }
+    setShopItems(items);
+  };
+
+  const rerollShop = () => {
+    const hasPurpleGold = artifacts.some(a => a.id === 'purple_gold_vip');
+    const cost = hasPurpleGold ? 2 : 5;
+
+    if (shopRerolls <= 0) { showToast("刷新次数已用尽！", "error"); return; }
+    if (money < cost) { showToast("金币不足！", "error"); return; }
+
+    playSound('buy'); 
+    setMoney(prev => prev - cost);
+    setShopRerolls(prev => prev - 1);
+    generateShop(false);
+  };
+
+  const buyItem = (item) => {
+    if (magicMode !== null) { return; } 
+
+    if (money < item.price && !item.isFree) { showToast("金币不足！", "error"); return; }
+    
+    const doBuy = () => {
+        if (!item.isFree) setMoney(prev => prev - item.price);
+        playSound('buy');
+        setShopItems(prev => prev.filter(i => i.uid !== item.uid));
+    };
+
+    if (item.type === 'card') {
+      doBuy();
+      setDeck(prev => [...prev, item.id.toLowerCase()]);
+    } 
+    else if (item.type === 'artifact') {
+      if (artifacts.length >= maxArtifacts) { showToast("神器槽已满！", "error"); return; }
+      doBuy();
+      setArtifacts(prev => [...prev, item]);
+    } 
+    else if (item.type === 'magic') {
+      if (item.action === 'remove_card' || item.action === 'duplicate_card' || item.action === 'remove_all_of_card') {
+        setMagicMode({ action: item.action, item: item });
+        setIsDeckVisible(true); 
+        showToast("请在左侧卡组中选择目标");
+      } else if (item.action === 'remove_artifact') {
+        if (artifacts.length === 0) { showToast("没有可摧毁的藏品！", "error"); return; }
+        setMagicMode({ action: item.action, item: item });
+        showToast("请在右侧选择要摧毁的藏品");
+      } else if (item.action === 'swap_artifacts') {
+        if (artifacts.length < 2) { showToast("至少需要2个神器才能交换", "error"); return; }
+        setMagicMode({ action: item.action, item: item });
+        showToast("请点击两个不同的神器进行交换");
+      } else if (item.action === 'reforge_artifact') {
+        if (artifacts.length === 0) { showToast("没有神器可重铸！", "error"); return; }
+        setMagicMode({ action: item.action, item: item });
+        showToast("请选择一个神器进行重铸");
+      } else {
+         if (item.action === 'add_slot') {
+             doBuy();
+             setMaxArtifacts(prev => prev + 1);
+             setGameStats(prev => ({ ...prev, dimPocketCount: prev.dimPocketCount + 1 }));
+             showToast("神器槽位 +1", "success");
+             return;
+         }
+         if (item.action === 'remove_all_rocks') {
+            const rockCount = deck.filter(c => c === 'rock').length;
+            const goldGain = rockCount * 5; 
+            setDeck(prev => prev.filter(c => c !== 'rock')); 
+            setMoney(prev => prev + goldGain);
+            showToast(`炸毁 ${rockCount} 个原石`, "success");
+         } else if (item.action === 'gamble_coins') {
+            const newDeck = deck.map(cardId => {
+               if (cardId === 'coin') {
+                  const options = Object.keys(SYMBOL_TYPES).filter(k => k !== 'COIN');
+                  return options[Math.floor(Math.random() * options.length)].toLowerCase();
+               }
+               return cardId;
+            });
+            setDeck(newDeck);
+            showToast("金币卡已变异", "success");
+         } else if (item.action === 'alchemy_coin_count') {
+            const coinCount = deck.filter(c => c === 'coin').length;
+            const gain = coinCount * 3;
+            setMoney(prev => prev + gain);
+            showToast(`获得 ${gain}G`, "success");
+         } else if (item.action === 'windfall_gold') {
+            const gain = Math.min(money, 50); 
+            setMoney(prev => prev + gain);
+            showToast(`天降横财 +${gain}G`, "success");
+         } else if (item.action === 'transmute_rock') {
+            const rockIndex = deck.findIndex(c => c === 'rock');
+            if (rockIndex === -1) { showToast("无原石", "error"); return; }
+            const gemKeys = Object.keys(SYMBOL_TYPES).filter(k => SYMBOL_TYPES[k].subtype === 'gem');
+            const newGemKey = gemKeys[Math.floor(Math.random() * gemKeys.length)];
+            const newGemName = SYMBOL_TYPES[newGemKey].name;
+            const newDeck = [...deck];
+            newDeck[rockIndex] = newGemKey.toLowerCase();
+            setDeck(newDeck);
+            showToast(`点石成金！原石变成了 [${newGemName}]`, "success");
+         } else if (item.action === 'chaos_spawn') {
+            const rainbowIndex = deck.findIndex(c => c === 'rainbow');
+            if (rainbowIndex === -1) { showToast("需要彩虹石", "error"); return; }
+            const newDeck = [...deck];
+            newDeck.splice(rainbowIndex, 1);
+            Object.keys(SYMBOL_TYPES).forEach(key => { if (key !== 'RAINBOW') newDeck.push(key.toLowerCase()); });
+            setDeck(newDeck);
+            showToast("混沌降临", "success");
+         } else if (item.action === 'add_rocks') {
+            const newDeck = [...deck, 'rock', 'rock', 'rock', 'rock', 'rock'];
+            setDeck(newDeck);
+            showToast("已添加 5 张原石", "success");
+         } else if (item.action === 'random_reward') {
+            const rewardType = Math.random() < 0.5 ? 'artifact' : 'card';
+            let rewardName = '';
+            
+            if (rewardType === 'artifact') {
+                const availableArtifacts = ARTIFACTS.filter(a => !artifacts.some(owned => owned.id === a.id));
+                if (availableArtifacts.length > 0 && artifacts.length < maxArtifacts) {
+                    const art = availableArtifacts[Math.floor(Math.random() * availableArtifacts.length)];
+                    setArtifacts(prev => [...prev, art]);
+                    rewardName = art.name;
+                } else {
+                    const cardKeys = Object.keys(SYMBOL_TYPES);
+                    const k = cardKeys[Math.floor(Math.random() * cardKeys.length)];
+                    setDeck(prev => [...prev, k.toLowerCase()]);
+                    rewardName = SYMBOL_TYPES[k].name;
+                }
+            } else {
+                const cardKeys = Object.keys(SYMBOL_TYPES);
+                const k = cardKeys[Math.floor(Math.random() * cardKeys.length)];
+                setDeck(prev => [...prev, k.toLowerCase()]);
+                rewardName = SYMBOL_TYPES[k].name;
+            }
+            showToast(`惊喜！获得了 [${rewardName}]`, "success");
+         } else if (item.action === 'randomize_all') {
+            const cardKeys = Object.keys(SYMBOL_TYPES);
+            const newDeck = deck.map(() => {
+                const k = cardKeys[Math.floor(Math.random() * cardKeys.length)];
+                return k.toLowerCase();
+            });
+            setDeck(newDeck);
+            showToast("卡组已彻底乱炖！", "success");
+         }
+         doBuy(); 
+      }
+    }
+  };
+
+  const handleCardClick = (cardId, index) => {
+    if (!magicMode) return;
+    if (magicMode.action === 'remove_card') {
+      if (deck.length <= 5) { showToast("至少保留5张卡", "error"); return; }
+      const newDeck = [...deck];
+      newDeck.splice(index, 1);
+      setDeck(newDeck);
+      finalizeMagic("卡牌已删除");
+    } 
+    else if (magicMode.action === 'remove_all_of_card') {
+      const cardTypeCount = deck.filter(c => c === cardId).length;
+      if (deck.length - cardTypeCount < 5) { showToast("删除后卡组不能少于5张", "error"); return; }
+      
+      const newDeck = deck.filter(c => c !== cardId);
+      setDeck(newDeck);
+      finalizeMagic(`已删除所有 [${SYMBOL_TYPES[cardId.toUpperCase()].name}]`);
+    }
+    else if (magicMode.action === 'duplicate_card') {
+      const newDeck = [...deck];
+      newDeck.splice(index, 0, cardId); 
+      setDeck(newDeck);
+      finalizeMagic("卡牌已复制");
+    }
+  };
+
+  const handleArtifactClick = (index) => {
+    if (magicMode?.action === 'swap_artifacts') {
+       if (swapSourceIndex === null) {
+          setSwapSourceIndex(index);
+          showToast("请点击另一个神器进行交换");
+       } else if (swapSourceIndex === index) {
+          setSwapSourceIndex(null);
+          showToast("已取消选择");
+       } else {
+          const newArtifacts = [...artifacts];
+          const temp = newArtifacts[swapSourceIndex];
+          newArtifacts[swapSourceIndex] = newArtifacts[index];
+          newArtifacts[index] = temp;
+          setArtifacts(newArtifacts);
+          setSwapSourceIndex(null);
+          finalizeMagic("位置已交换");
+       }
+       return;
+    }
+
+    if (magicMode && magicMode.action === 'remove_artifact') {
+      const newArts = [...artifacts];
+      newArts.splice(index, 1);
+      setArtifacts(newArts);
+      setMoney(prev => prev + 15);
+      finalizeMagic("藏品已回收 (+15G)");
+    } else if (magicMode && magicMode.action === 'reforge_artifact') {
+      const availableArtifacts = ARTIFACTS.filter(a => !artifacts.some(owned => owned.id === a.id));
+      if (availableArtifacts.length === 0) { showToast("没有新神器可重铸", "error"); return; }
+      
+      const newArt = availableArtifacts[Math.floor(Math.random() * availableArtifacts.length)];
+      const newArts = [...artifacts];
+      newArts[index] = newArt;
+      setArtifacts(newArts);
+      finalizeMagic(`重铸成功！获得了 [${newArt.name}]`);
+    }
+  };
+
+  const finalizeMagic = (msg) => {
+    playSound('buy');
+    setMoney(prev => prev - magicMode.item.price);
+    setShopItems(prev => prev.filter(i => i.uid !== magicMode.item.uid));
+    setMagicMode(null);
+    setIsDeckVisible(false);
+    showToast(msg, "success");
+  };
+
+  const startGame = () => {
+    setGameState('IDLE');
+    setDeck(INITIAL_DECK);
+    setArtifacts([]);
+    setRound(1);
+    setLevel(1);
+    setTargetScore(200);
+    setSpinsLeft(4);
+    setMaxSpins(4);
+    setScore(0);
+    setMoney(10);
+    setShopRerolls(1);
+    setMaxArtifacts(5);
+    setGameStats({ totalHands: 0, bestHand: 0, worstHand: -1, totalGoldEarned: 0, globalTotalScore: 0, maxLevel: 1, totalRounds: 0, synergyCounts: {}, dimPocketCount: 0 });
+    setGrid(Array(9).fill(null));
+    setSummaryPage(0);
+  };
+
+  const nextRound = () => {
+    const remainingScore = Math.max(0, score - targetScore);
+    setScore(remainingScore);
+
+    let nextR = round + 1;
+    let nextL = level;
+    
+    if (nextR > 4) {
+      nextR = 1;
+      nextL += 1;
+    }
+
+    setRound(nextR);
+    setLevel(nextL);
+    
+    const newTotalRounds = gameStats.totalRounds + 1;
+    setGameStats(prev => ({
+      ...prev,
+      maxLevel: Math.max(prev.maxLevel, nextL),
+      totalRounds: newTotalRounds
+    }));
+
+    const hasPiggyBank = artifacts.some(a => a.id === 'piggy_bank');
+    if (hasPiggyBank) {
+        const interest = Math.floor(money / 10);
+        if (interest > 0) {
+            setMoney(prev => prev + interest);
+            showToast(`利息: +${interest}G`, "success");
+        }
+    }
+
+    let newTarget = 0;
+    if (nextL === 1) {
+       const targets = [200, 250, 350, 500];
+       newTarget = targets[nextR - 1] || 500;
+    } else {
+       let factor = 1.2;
+       let baseAdd = 200;
+
+       if (nextL >= 2 && nextL <= 5) {
+          factor = 1.2;
+          baseAdd = 200;
+       } else if (nextL >= 6 && nextL <= 9) {
+          factor = 1.25; 
+          baseAdd = 100;
+       } else {
+          factor = 1.4; 
+          baseAdd = 50;
+       }
+
+       newTarget = Math.floor(targetScore * factor) + baseAdd;
+    }
+    
+    setTargetScore(newTarget);
+    
+    let bonusSpins = 0;
+    artifacts.forEach(art => {
+      if (art.addSpins) bonusSpins += art.addSpins;
+    });
+    
+    const newSpins = 4 + bonusSpins;
+    setSpinsLeft(newSpins);
+    setMaxSpins(newSpins);
+    
+    setGameState('IDLE');
+    setGrid(Array(9).fill(null));
+  };
+
+  const getDeckSummary = () => {
+    const counts = {};
+    deck.forEach(id => counts[id] = (counts[id] || 0) + 1);
+    return counts;
+  };
+
+  if (gameState === 'START') {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-screen bg-slate-950 text-slate-100 p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950"></div>
+        <div className="mb-8 relative z-10 animate-bounce">
+          <Gem size={100} className="text-blue-500 drop-shadow-[0_0_30px_rgba(59,130,246,0.6)]" />
+        </div>
+        <h1 className="text-7xl font-black mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent relative z-10 tracking-tight">
+          宝石大亨
+        </h1>
+        <p className="text-slate-400 mb-12 text-2xl font-light relative z-10">Gem Tycoon: Slot Roguelike</p>
+        <button 
+          onClick={startGame}
+          className="group relative px-10 py-5 bg-white text-slate-950 font-black text-2xl rounded-full overflow-hidden hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.3)] z-10"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <span className="relative z-10 flex items-center gap-3">
+            <Play fill="currentColor" /> 开启冒险
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  if (gameState === 'SUMMARY') {
+    return (
+      <div className="flex items-center justify-center w-full h-screen bg-slate-950 text-slate-100 p-6">
+        <div className="w-full max-w-3xl bg-slate-900 rounded-3xl p-8 shadow-2xl border border-slate-800 flex flex-col items-center max-h-screen overflow-y-auto relative min-h-[500px] scrollbar-hide">
+          <Trophy size={48} className="text-yellow-400 mb-2 drop-shadow-lg" />
+          <h2 className="text-3xl font-bold text-white mb-1">冒险结束</h2>
+          <p className="text-slate-400 text-lg mb-6">Lv.{level} - Round {round}</p>
+
+          <div className="flex items-center justify-between w-full mb-4 px-8">
+             <button onClick={() => setSummaryPage(prev => Math.max(0, prev - 1))} disabled={summaryPage === 0} className="p-2 bg-slate-800 rounded-full disabled:opacity-30 hover:bg-slate-700 transition"><ChevronLeft size={24}/></button>
+             <div className="flex gap-2">
+                 <div className={`w-2 h-2 rounded-full ${summaryPage === 0 ? 'bg-white' : 'bg-slate-700'}`}></div>
+                 <div className={`w-2 h-2 rounded-full ${summaryPage === 1 ? 'bg-white' : 'bg-slate-700'}`}></div>
+             </div>
+             <button onClick={() => setSummaryPage(prev => Math.min(1, prev + 1))} disabled={summaryPage === 1} className="p-2 bg-slate-800 rounded-full disabled:opacity-30 hover:bg-slate-700 transition"><ChevronRight size={24}/></button>
+          </div>
+
+          <div className="flex-1 w-full overflow-y-auto mb-8 px-4 scrollbar-hide">
+             {summaryPage === 0 ? (
+                 <>
+                    <div className="grid grid-cols-3 gap-4 w-full mb-8">
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-yellow-500/20 p-2 rounded-lg text-yellow-400"><Coins size={20}/></div>
+                        <div><div className="text-xs text-slate-400">全局收益</div><div className="font-bold text-xl">{gameStats.totalGoldEarned}</div></div>
+                        </div>
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-blue-500/20 p-2 rounded-lg text-blue-400"><BarChart3 size={20}/></div>
+                        <div><div className="text-xs text-slate-400">全局总分</div><div className="font-bold text-xl">{gameStats.globalTotalScore}</div></div>
+                        </div>
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-purple-500/20 p-2 rounded-lg text-purple-400"><Layers size={20}/></div>
+                        <div><div className="text-xs text-slate-400">生存轮数</div><div className="font-bold text-xl">{gameStats.totalRounds}</div></div>
+                        </div>
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-green-500/20 p-2 rounded-lg text-green-400"><Trophy size={20}/></div>
+                        <div><div className="text-xs text-slate-400">最高难度</div><div className="font-bold text-xl">Level {gameStats.maxLevel}</div></div>
+                        </div>
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-emerald-500/20 p-2 rounded-lg text-emerald-400"><ThumbsUp size={20}/></div>
+                        <div><div className="text-xs text-slate-400">最佳一手</div><div className="font-bold text-xl">{gameStats.bestHand}</div></div>
+                        </div>
+                        <div className="bg-slate-800/50 p-4 rounded-xl flex items-center gap-3">
+                        <div className="bg-red-500/20 p-2 rounded-lg text-red-400"><ThumbsDown size={20}/></div>
+                        <div><div className="text-xs text-slate-400">最烂一手</div><div className="font-bold text-xl">{gameStats.worstHand === -1 ? 0 : gameStats.worstHand}</div></div>
+                        </div>
+                    </div>
+
+                    <div className="w-full bg-slate-800/30 rounded-xl p-4">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase mb-2">排列统计</h3>
+                        <div className="grid grid-cols-3 gap-x-8 gap-y-2 text-sm">
+                            {Object.entries(gameStats.synergyCounts).length > 0 ? Object.entries(gameStats.synergyCounts).map(([name, count]) => (
+                            <div key={name} className="flex justify-between text-slate-300 border-b border-slate-700/50 pb-1">
+                                <span>{name}</span>
+                                <span className="font-mono text-white">x{count}</span>
+                            </div>
+                            )) : <div className="text-slate-600 italic col-span-3 text-center">无特殊排列记录</div>}
+                        </div>
+                    </div>
+                 </>
+             ) : (
+                 <div className="space-y-6">
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><Crown size={16}/> 最终神器 ({artifacts.length})</h3>
+                        <div className="grid grid-cols-5 gap-3">
+                             {artifacts.map((art, i) => (
+                                <div key={i} className="aspect-square bg-slate-800 rounded-lg flex flex-col items-center justify-center border border-slate-700 p-2 text-center group relative">
+                                    <div className="text-purple-400 mb-1">{React.cloneElement(art.icon, { size: 24 })}</div>
+                                    <div className="text-[10px] leading-tight text-slate-300 line-clamp-2">{art.name}</div>
+                                    <div className="absolute bottom-full mb-2 bg-slate-900 text-xs p-2 rounded border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                                        {art.desc}
+                                        {art.id === 'red_luck' && <div className="text-red-400 mt-1">成长: {art.data?.growth || 0}</div>}
+                                    </div>
+                                </div>
+                             ))}
+                             {artifacts.length === 0 && <div className="col-span-5 text-center text-slate-600 italic py-4">无神器</div>}
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><Layers size={16}/> 最终卡组 ({deck.length})</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                             {Object.entries(getDeckSummary()).map(([id, count]) => {
+                                const type = SYMBOL_TYPES[id.toUpperCase()];
+                                return (
+                                    <div key={id} className="flex items-center justify-between p-2 rounded bg-slate-800 border border-slate-700">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`${type.color} p-1 rounded bg-slate-900`}>{React.cloneElement(type.icon, { size: 16 })}</div>
+                                            <span className="text-sm font-bold text-slate-300">{type.name}</span>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-slate-500">x{count}</span>
+                                    </div>
+                                )
+                             })}
+                        </div>
+                    </div>
+                 </div>
+             )}
+          </div>
+
+          <button onClick={startGame} className="px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xl rounded-xl transition-all shadow-xl w-full">
+            重新开业
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+      
+      {notification && (
+        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full font-bold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
+          notification.type === 'error' ? 'bg-red-500 text-white' : 
+          notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-slate-700 text-white'
+        }`}>
+          {notification.msg}
+        </div>
+      )}
+
+      {/* --- 左侧仪表盘 --- */}
+      <div className="w-1/4 h-full bg-slate-900 border-r border-slate-800 p-6 flex flex-col gap-6 relative z-10">
+        <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+          <div className="flex justify-between items-center mb-4">
+             <div className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <span className="bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30">LV.{level}</span>
+                <span>ROUND {round}/4</span>
+             </div>
+             {score >= targetScore && <div className="text-green-400 flex items-center gap-1 text-xs font-bold"><CheckCircle2 size={14}/> 已达标</div>}
+          </div>
+          <div className="mb-2">
+            <div className="text-4xl font-black text-white">{score}</div>
+            <div className="text-sm text-slate-400">目标: <span className="text-red-400 font-bold text-lg">{targetScore}</span></div>
+          </div>
+          <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden">
+             <div 
+               className={`h-full transition-all duration-700 ease-out ${score >= targetScore ? 'bg-green-500' : 'bg-gradient-to-r from-blue-500 to-purple-500'}`}
+               style={{ width: `${Math.min(100, (score / targetScore) * 100)}%` }}
+             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+           <div className={`bg-slate-800 p-4 rounded-xl border flex flex-col items-center ${spinsLeft === 0 ? 'border-red-500/50 bg-red-900/10' : 'border-slate-700'}`}>
+              <span className="text-xs text-slate-400 uppercase font-bold mb-1">Spins</span>
+              <div className="flex items-baseline gap-1">
+                <span className={`text-3xl font-black ${spinsLeft === 0 ? 'text-red-500' : 'text-blue-400'}`}>{spinsLeft}</span>
+                <span className="text-sm text-slate-500 font-bold">/{maxSpins}</span>
+              </div>
+           </div>
+           <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col items-center">
+              <span className="text-xs text-slate-400 uppercase font-bold mb-1">Gold</span>
+              <div className={`flex items-center gap-1 text-3xl font-black transition-transform ${goldPop ? 'scale-125 text-white' : 'scale-100 text-yellow-400'}`}>
+                <Coins size={24} className="text-yellow-500" /> 
+                {money + (gameState === 'SCORING' ? handResult.gold : 0)}
+              </div>
+           </div>
+        </div>
+
+        <div className="flex-1 bg-slate-800/50 rounded-2xl border border-slate-700 p-4 overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center mb-3">
+             <h3 className="font-bold text-slate-300 flex items-center gap-2"><Eye size={18}/> 奖池预览</h3>
+             <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-400">{deck.length} 张</span>
+          </div>
+          <div className="flex-1 overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-slate-600">
+             {Object.entries(getDeckSummary()).map(([id, count]) => {
+                const type = SYMBOL_TYPES[id.toUpperCase()];
+                return (
+                  <div key={id} className={`flex items-center justify-between p-2 rounded bg-slate-800 border border-slate-700 ${magicMode && isDeckVisible ? 'hover:bg-purple-900/30 cursor-pointer border-purple-500' : ''}`}
+                       onClick={() => isDeckVisible && magicMode ? handleCardClick(id, deck.indexOf(id)) : null}
+                  >
+                      <div className="flex items-center gap-3">
+                         <div className={`${type.color} p-1 rounded bg-slate-900`}>{React.cloneElement(type.icon, { size: 18 })}</div>
+                         <span className="text-sm font-bold text-slate-300">{type.name}</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-500">x{count}</span>
+                  </div>
+                )
+             })}
+          </div>
+        </div>
+      </div>
+
+      {/* --- 中央舞台 --- */}
+      <div className="flex-1 h-full relative flex flex-col items-center justify-center p-8 bg-slate-950/50">
+        
+        <div className={`absolute top-8 flex items-center gap-6 transition-all duration-300 ${gameState === 'SCORING' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+           <div className="flex flex-col items-center">
+              <div className={`text-4xl font-black drop-shadow-lg transition-transform ${currentAnimEvent?.addChips ? 'scale-125 text-white' : 'text-blue-400 scale-100'}`}>
+                {handResult.chips}
+              </div>
+              <div className="text-[10px] text-blue-300 font-bold tracking-widest uppercase">Chips</div>
+           </div>
+           <div className="text-slate-600 text-2xl font-black">X</div>
+           <div className="flex flex-col items-center">
+              <div className={`text-4xl font-black drop-shadow-lg transition-transform ${currentAnimEvent?.addMult || currentAnimEvent?.type === 'multiplier' ? 'scale-125 text-white' : 'text-red-500 scale-100'}`}>
+                {handResult.mult}
+              </div>
+              <div className="text-[10px] text-red-300 font-bold tracking-widest uppercase">Mult</div>
+           </div>
+           <div className="text-slate-600 text-2xl font-black">=</div>
+           <div className="text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] animate-pulse">
+              {handResult.total}
+           </div>
+        </div>
+        
+        {currentAnimEvent?.type === 'synergy' && (
+           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in zoom-in slide-in-from-bottom-5 duration-300">
+              <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500 drop-shadow-[0_4px_0_rgba(0,0,0,0.5)] tracking-tighter">
+                 {currentAnimEvent.name}
+              </div>
+              <div className="text-center text-white font-bold text-xl mt-1 drop-shadow-md">倍率 +{currentAnimEvent.addMult}</div>
+           </div>
+        )}
+
+        <div className="aspect-square h-3/4 max-h-[600px] grid grid-cols-3 gap-4 p-6 bg-slate-900 rounded-3xl border-4 border-slate-800 shadow-2xl relative">
+          {grid.map((symbol, i) => {
+            const isTarget = currentAnimEvent && (
+               (currentAnimEvent.type === 'card' && currentAnimEvent.index === i) || 
+               (currentAnimEvent.indices && currentAnimEvent.indices.includes(i)) ||
+               (currentAnimEvent.type === 'multiplier' && currentAnimEvent.index === i)
+            );
+            const isSynergy = currentAnimEvent?.type === 'synergy' && currentAnimEvent.indices.includes(i);
+            const isBlur = symbol?.isBlur;
+            
+            const hasHammer = artifacts.some(a => a.id === 'hammer');
+            const hasPolisher = artifacts.some(a => a.id === 'polisher');
+            const hasGreedyHand = artifacts.some(a => a.id === 'greedy_hand');
+            const hasShinyGold = artifacts.some(a => a.id === 'shiny_gold');
+            const hasPhilosophersStone = artifacts.some(a => a.id === 'philosophers_stone');
+            const hasAngleGrinder = artifacts.some(a => a.id === 'angle_grinder');
+            const hasOldEyes = artifacts.some(a => a.id === 'old_eyes');
+            const hasPurpleAir = artifacts.some(a => a.id === 'purple_air');
+
+            // 辅助逻辑：复用 prepareScoreQueue 中的 isGem 逻辑
+            const isGem = symbol && (symbol.subtype === 'gem' || (hasOldEyes && (symbol.id === 'rock' || symbol.id === 'coin')));
+
+            let displayChips = symbol ? symbol.chips : 0;
+            let displayMult = symbol ? symbol.mult : 0;
+            
+            if (isGem && hasPolisher) {
+              displayChips += 10;
+            }
+            if (symbol && symbol.id === 'coin' && hasGreedyHand) {
+              displayChips += 10;
+            }
+            if (symbol && symbol.id === 'rock' && hasHammer) {
+              displayChips = 10;
+            }
+
+            if (symbol && symbol.id === 'coin' && hasShinyGold) {
+              displayMult += 0.8; // Buffed to 0.8
+            }
+            if (symbol && symbol.id === 'rock' && hasPhilosophersStone) {
+              displayMult += 3.0; // Buffed to 3.0
+            }
+            if (isGem && hasAngleGrinder) {
+              displayMult += 1;
+            }
+
+            const showValue = symbol && !isBlur && ((displayChips > 0 || displayMult > 0));
+            const showMultBadge = symbol && !isBlur && (symbol.isMultMultiplier || displayMult > 0);
+
+            // 紫气东来：Badge 显示逻辑
+            let displayMultFactor = symbol?.multiplierVal || 0;
+            if (symbol?.id === 'amethyst' && hasPurpleAir) {
+                displayMultFactor += 1;
+            }
+
+            return (
+              <div 
+                key={symbol ? symbol.uid : i} 
+                className={`
+                  relative flex flex-col items-center justify-center rounded-2xl transition-all duration-200 overflow-hidden
+                  ${symbol ? symbol.bg : 'bg-slate-800'}
+                  ${symbol ? symbol.border : 'border-slate-700'}
+                  border-b-4
+                  ${isTarget ? 'z-20 scale-105 brightness-110 shadow-[0_0_30px_rgba(255,255,255,0.3)]' : ''}
+                  ${isSynergy ? 'ring-4 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.6)]' : ''}
+                  ${isTarget && !isSynergy ? 'animate-bounce-short' : ''} 
+                  ${isBlur ? 'blur-[2px] opacity-80 scale-95' : 'opacity-100'}
+                `}
+              >
+                {symbol ? (
+                  <>
+                    <div className={`${symbol.color} ${isBlur ? 'animate-pulse translate-y-2' : ''} transition-transform duration-300`}>
+                      {symbol.icon}
+                    </div>
+                    {!isBlur && (
+                      <span className="text-xs mt-2 text-slate-200 font-bold opacity-80">
+                        {symbol.name}
+                      </span>
+                    )}
+                    
+                    {/* 角标显示逻辑 */}
+                    {(showValue || showMultBadge) && (
+                      <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                          {displayChips > 0 && <span className="text-[10px] font-bold bg-blue-600/90 text-white px-1.5 rounded-md shadow-sm">+{displayChips}</span>}
+                          
+                          {symbol.isMultMultiplier && (
+                            <span className={`text-[10px] font-bold px-1.5 rounded-md shadow-sm text-white bg-purple-600/90`}>
+                              x{displayMultFactor}
+                            </span>
+                          )}
+                          
+                          {displayMult > 0 && (
+                            <span className={`text-[10px] font-bold px-1.5 rounded-md shadow-sm text-white ${symbol.id === 'pink_diamond' ? 'bg-pink-600/90' : 'bg-red-600/90'}`}>
+                              {symbol.id === 'pink_diamond' ? `+${displayMult}x` : `+${displayMult}x`}
+                            </span>
+                          )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-slate-800 font-mono text-4xl opacity-20">?</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* --- 右侧操作栏 --- */}
+      <div className="w-1/4 h-full bg-slate-900 border-l border-slate-800 p-6 flex flex-col gap-6 z-10">
+        
+        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
+           <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2 justify-between">
+             <span><Crown size={14} className="inline mr-1"/> Artifacts ({artifacts.length}/{maxArtifacts})</span>
+             {artifacts.some(a => a.id === 'turn_tables') && <span className="text-xs text-blue-400 animate-pulse">Swap Enabled</span>}
+           </h3>
+           <div className="grid grid-cols-5 gap-2">
+             {artifacts.map((art, i) => {
+                const isAnimating = currentAnimEvent?.type === 'artifact' && currentAnimEvent.id === art.id;
+
+                return (
+                <button 
+                  key={i}
+                  onClick={() => handleArtifactClick(i)}
+                  className={`
+                    aspect-square bg-slate-700 rounded-lg flex items-center justify-center border border-slate-600 hover:bg-slate-600 transition-colors group relative 
+                    ${magicMode?.action === 'remove_artifact' ? 'ring-2 ring-red-500 animate-pulse cursor-pointer' : ''}
+                    ${magicMode?.action === 'reforge_artifact' ? 'ring-2 ring-purple-500 animate-pulse cursor-pointer' : ''}
+                    ${swapSourceIndex === i ? 'ring-2 ring-blue-400 scale-110 z-10' : ''}
+                    ${isAnimating ? 'ring-4 ring-purple-400 scale-110 shadow-[0_0_20px_rgba(168,85,247,0.6)] z-20 transition-all duration-300' : ''}
+                  `}
+                >
+                    <div className="text-purple-400 scale-75">{art.icon}</div>
+                    {!magicMode && swapSourceIndex === null && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-slate-950 text-slate-300 text-xs p-3 rounded-lg border border-slate-700 shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none z-50">
+                        <div className="font-bold text-white mb-1">{art.name}</div>
+                        {art.desc}
+                        {art.isGrowth && <div className="text-green-400 mt-1">当前加成: +{art.data?.growth || 0}x</div>}
+                        {/* Dynamic Magic Box Display */}
+                        {art.id === 'magic_box' && <div className="text-blue-300 mt-1">当前: +{deck.length * 2}x</div>}
+                        {/* More is Better Display */}
+                        {art.id === 'more_is_better' && <div className="text-yellow-300 mt-1">当前: +{artifacts.length * 25} 筹码</div>}
+                        {/* Ore Specimen Display */}
+                        {art.id === 'ore_specimen' && <div className="text-stone-300 mt-1">当前: +{deck.filter(c=>c==='rock').length * 15} 筹码</div>}
+                        {/* Red Luck Display */}
+                        {art.id === 'red_luck' && <div className="text-red-300 mt-1">当前加成: 筹码+{(art.data?.growth || 0)}, 倍率+{(art.data?.growth || 0)}</div>}
+                      </div>
+                    )}
+                </button>
+             )})}
+             {[...Array(Math.max(0, maxArtifacts - artifacts.length))].map((_, i) => (
+               <div key={`empty-${i}`} className="aspect-square bg-slate-900/50 rounded-lg border border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs"></div>
+             ))}
+           </div>
+        </div>
+
+        <div className="flex-1 flex flex-col justify-end">
+           {gameState === 'SHOP' ? (
+             <div className="flex-1 flex flex-col bg-slate-800 rounded-2xl border border-slate-700 p-4 animate-in slide-in-from-right">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-yellow-400 flex items-center gap-2"><Store/> 商店</h3>
+                  <button 
+                    onClick={rerollShop}
+                    disabled={shopRerolls <= 0 || money < (artifacts.some(a => a.id === 'purple_gold_vip') ? 2 : 5) || magicMode !== null}
+                    className="flex items-center gap-1 text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw size={12}/> 刷新 ({artifacts.some(a => a.id === 'purple_gold_vip') ? '2G' : '5G'}) <span className="text-blue-300">x{shopRerolls}</span>
+                  </button>
+                </div>
+                <div className="flex-1 space-y-3 overflow-y-auto mb-4 pr-1">
+                   {shopItems.map(item => (
+                     <button 
+                       key={item.uid}
+                       onClick={() => buyItem(item)}
+                       disabled={(money < item.price && !item.isFree) || magicMode !== null}
+                       className={`w-full flex items-center p-3 rounded-xl border transition-all text-left relative overflow-hidden group
+                         ${(money >= item.price || item.isFree) && magicMode === null ? 'bg-slate-700 hover:bg-slate-600 border-slate-600' : 'bg-slate-900 border-slate-800 opacity-50 cursor-not-allowed'}
+                       `}
+                     >
+                       <div className={`${item.color} bg-slate-900 p-2 rounded-lg mr-3`}>{React.cloneElement(item.icon, { size: 20 })}</div>
+                       <div className="flex-1">
+                          <div className="flex justify-between">
+                            <span className="font-bold text-sm text-slate-200">{item.name}</span>
+                            <span className={`font-mono text-sm ${item.isFree ? 'text-green-400 line-through decoration-white' : 'text-yellow-400'}`}>
+                               {item.isFree ? 'FREE' : item.price + 'G'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-1 line-clamp-2">{item.desc}</div>
+                       </div>
+                       <div className={`absolute top-0 right-0 w-2 h-2 rounded-bl 
+                         ${item.type === 'card' ? 'bg-blue-500' : item.type === 'artifact' ? 'bg-purple-500' : 'bg-orange-500'}
+                       `}></div>
+                     </button>
+                   ))}
+                </div>
+
+                {/* 商店内的施法提示 Banner */}
+                {magicMode && (
+                  <div className="bg-slate-800 border-2 border-purple-500 p-3 rounded-xl mb-3 animate-pulse shadow-lg z-20">
+                      <h4 className="text-purple-400 font-bold mb-1 flex items-center gap-2"><Wand2 size={16}/> 施法中...</h4>
+                      <p className="text-xs text-slate-400 mb-2">{magicMode.item.desc}</p>
+                      <button onClick={() => { setMagicMode(null); setIsDeckVisible(false); setSwapSourceIndex(null); }} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold text-white transition-colors">取消施法</button>
+                  </div>
+                )}
+
+                <button 
+                   onClick={nextRound}
+                   disabled={magicMode !== null}
+                   className={`w-full py-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform ${magicMode !== null ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+                >
+                   下一关 <ArrowRight size={18}/>
+                </button>
+             </div>
+           ) : (
+             <div className="flex-1 flex flex-col justify-end">
+                {magicMode && (
+                  <div className="bg-slate-800 border-2 border-purple-500 p-4 rounded-xl mb-4 animate-pulse">
+                      <h4 className="text-purple-400 font-bold mb-1 flex items-center gap-2"><Wand2 size={16}/> 施法中...</h4>
+                      <p className="text-xs text-slate-400 mb-3">{magicMode.item.desc}</p>
+                      <button onClick={() => { setMagicMode(null); setIsDeckVisible(false); setSwapSourceIndex(null); }} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold">取消</button>
+                  </div>
+                )}
+
+                <button 
+                  onClick={spin}
+                  disabled={gameState !== 'IDLE' || magicMode !== null || spinsLeft <= 0}
+                  className={`
+                    w-full py-6 text-2xl font-black rounded-2xl shadow-xl border-b-8 transition-all flex items-center justify-center gap-4 group
+                    ${gameState === 'IDLE' && !magicMode && spinsLeft > 0
+                      ? 'bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 border-orange-700 text-white active:border-b-0 active:translate-y-2' 
+                      : 'bg-slate-800 border-slate-900 text-slate-500 cursor-not-allowed'}
+                  `}
+                >
+                  {gameState === 'SPINNING' ? (
+                     <RotateCcw className="animate-spin" />
+                  ) : (
+                     <>
+                       <span className="tracking-widest">{spinsLeft > 0 ? 'SPIN' : 'NO SPINS'}</span>
+                       {gameState === 'IDLE' && !magicMode && spinsLeft > 0 && <div className="bg-black/20 px-3 py-1 rounded text-sm font-mono">-1 SP</div>}
+                     </>
+                  )}
+                </button>
+             </div>
+           )}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes bounce-short {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.15) translateY(-8px); }
+        }
+        .animate-bounce-short {
+          animation: bounce-short 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+      `}</style>
+    </div>
+  );
+}
+        // --- 粘贴开始 ---
+        // (把你的 const Heptagon ... 一直到 App 组件定义的结束大括号全部放这里)
+        // ...
+        // --- 粘贴结束 ---
+
+
+
+
+
+        // ==========================================
+        //  手动挂载 React 应用
+        // ==========================================
+        // 假设你的主组件叫 App (记得把你代码里最后一行的 export default App 删掉)
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
